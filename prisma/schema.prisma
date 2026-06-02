@@ -1,0 +1,97 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider     = "prisma-client"
+  output       = "../generated/prisma"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum ProjectRole {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
+model User {
+  id                    String    @id @default(uuid())
+  name                  String
+  email                 String    @unique
+  passwordHash          String
+  emailVerified         Boolean   @default(false)
+  verificationCodeHash  String?
+  verificationExpiresAt DateTime?
+  refreshTokenHash      String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  projects       Project[]
+  projectMembers ProjectMember[]
+  tasks          Task[]
+}
+
+model Project {
+  id          String   @id @default(uuid())
+  name        String
+  description String?
+  ownerId     String
+  createdAt   DateTime @default(now())
+  updateAt    DateTime @updatedAt
+
+  tasks Task[]
+  steps Step[]
+
+  owner   User            @relation(fields: [ownerId], references: [id])
+  members ProjectMember[]
+}
+
+model Step {
+  id        String   @id @default(uuid())
+  name      String
+  position  Int      @default(0)
+  projectId String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id])
+  tasks   Task[]
+
+  @@index([projectId, position])
+}
+
+model ProjectMember {
+  id        String      @id @default(uuid())
+  userId    String
+  projectId String
+  role      ProjectRole @default(MEMBER)
+  createdAt DateTime    @default(now())
+
+  user    User    @relation(fields: [userId], references: [id])
+  project Project @relation(fields: [projectId], references: [id])
+
+  @@unique([userId, projectId])
+}
+
+model Task {
+  id            String   @id @default(uuid())
+  name          String
+  description   String?
+  position      Int      @default(0)
+  userCreatorId String
+  projectId     String
+  stepId        String?
+  createdAt     DateTime @default(now())
+  updateAt      DateTime @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id])
+  step    Step?   @relation(fields: [stepId], references: [id])
+  creator User    @relation(fields: [userCreatorId], references: [id])
+
+  @@index([stepId, position])
+}
