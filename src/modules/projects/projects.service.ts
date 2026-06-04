@@ -4,27 +4,33 @@ import { CreateProjectDto } from './dto/create-project.dto';
 import { UpdateProjectDto } from './dto/update-project.dto';
 import { AddProjectMemberDto } from './dto/add-project-member.dto';
 import { UsersRepository } from '../users/users.repository';
+import { EventsService } from '../events/events.service';
 
 @Injectable()
 export class ProjectsService {
     constructor(
         private readonly projectsRepository: ProjectsRepository,
         private readonly usersRepository: UsersRepository,
-    ) {}
+        private readonly eventsService: EventsService,
+    ) { }
 
-    create(dto: CreateProjectDto, ownerId: string) { //criar projeto
-        return this.projectsRepository.create({
+    async create(dto: CreateProjectDto, ownerId: string) { //criar projeto
+        const project = await this.projectsRepository.create({
             name: dto.name,
             description: dto.description,
             ownerId, //vincular criardor como dono do projeto
         });
+
+        this.eventsService.publishProjectEvent(project.id, 'project.created', project)
+
+        return project;
     }
 
     findMyProjects(userId: string) { //listar projetos por usuário
         return this.projectsRepository.findManyByOwnerId(userId);
     }
 
-    async findProjectById(projectId: string, userId: string){ //buscar projeto por id
+    async findProjectById(projectId: string, userId: string) { //buscar projeto por id
         const project = await this.projectsRepository.findProjectById(projectId);
 
         if (!project) {
@@ -43,17 +49,25 @@ export class ProjectsService {
     async updateProject(dto: UpdateProjectDto, projectId: string, userId: string) {
         await this.assertCanManageProject(projectId, userId);
 
-        return this.projectsRepository.edit({
+        const project = await this.projectsRepository.edit({
             name: dto.name,
             description: dto.description,
             id: projectId,
         });
+
+        this.eventsService.publishProjectEvent(project.id, 'project.updated', project)
+
+        return project;
     }
 
     async deleteProject(id: string, userId: string) {
         await this.assertCanManageProject(id, userId);
 
-        return this.projectsRepository.deleteProject(id);
+        const project = await this.projectsRepository.deleteProject(id);
+
+        this.eventsService.publishProjectEvent(project.id, 'project.deleted', project)
+
+        return project;
     }
 
     private async assertCanManageProject(projectId: string, userId: string) {
@@ -79,7 +93,7 @@ export class ProjectsService {
     ) {
         const project = await this.projectsRepository.findProjectById(projectId);
 
-        if(!project) {
+        if (!project) {
             throw new NotFoundException("Project not found");
         }
 
@@ -90,13 +104,13 @@ export class ProjectsService {
         const isOwner = project.ownerId === requesterId;
         const canManageByRole = requesterMember && ["OWNER", "ADMIN"].includes(requesterMember.role);
 
-        if(!isOwner && !canManageByRole) {
+        if (!isOwner && !canManageByRole) {
             throw new ForbiddenException("You cannot add member to this project");
         }
 
         const userToAdd = await this.usersRepository.findByEmail(dto.email);
 
-        if(!userToAdd) {
+        if (!userToAdd) {
             throw new NotFoundException("User not found");
         }
 
@@ -110,7 +124,7 @@ export class ProjectsService {
     async findMembers(projectId: string, requesterId: string) {
         const requesterMember = await this.projectsRepository.findMember(projectId, requesterId);
 
-        if(!requesterMember) {
+        if (!requesterMember) {
             throw new ForbiddenException("You are not a member of this project");
         }
 
