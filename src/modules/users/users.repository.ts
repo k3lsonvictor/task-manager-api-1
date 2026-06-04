@@ -44,6 +44,9 @@ export class UsersRepository {
       emailVerified: boolean;
       verificationCodeHash: string | null;
       verificationExpiresAt: Date | null;
+      passwordResetCodeHash: string | null;
+      passwordResetExpiresAt: Date | null;
+      refreshTokenHash: string | null;
     }>,
   ) {
     return this.prisma.user.update({

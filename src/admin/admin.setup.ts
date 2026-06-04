@@ -146,6 +146,8 @@ const resourceOptions = (tableName: string) => {
         },
         verificationCodeHash: { isVisible: false },
         verificationExpiresAt: { isVisible: false },
+        passwordResetCodeHash: { isVisible: false },
+        passwordResetExpiresAt: { isVisible: false },
       },
     };
   }

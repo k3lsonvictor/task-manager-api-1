@@ -4,8 +4,15 @@ import { ConfigService } from '@nestjs/config';
 import type { Job } from 'bullmq';
 import * as nodemailer from 'nodemailer';
 import type { Transporter } from 'nodemailer';
-import { MAIL_QUEUE, SEND_VERIFICATION_EMAIL_JOB } from '../mail.constants';
+import {
+  MAIL_QUEUE,
+  SEND_PASSWORD_RESET_EMAIL_JOB,
+  SEND_VERIFICATION_EMAIL_JOB,
+} from '../mail.constants';
 import type { SendVerificationEmailJob } from '../dto/send-verification-email.job';
+import type { SendPasswordResetEmailJob } from '../dto/send-password-reset-email.job';
+
+type MailJob = SendVerificationEmailJob | SendPasswordResetEmailJob;
 
 @Injectable()
 @Processor(MAIL_QUEUE)
@@ -23,13 +30,21 @@ export class MailProcessor extends WorkerHost {
     });
   }
 
-  async process(job: Job<SendVerificationEmailJob>) {
-    if (job.name !== SEND_VERIFICATION_EMAIL_JOB) {
-      this.logger.warn(`Ignoring unknown mail job: ${job.name}`);
-      return;
+  async process(job: Job<MailJob>) {
+    switch (job.name) {
+      case SEND_VERIFICATION_EMAIL_JOB:
+        await this.sendVerificationEmail(job.data);
+        return;
+      case SEND_PASSWORD_RESET_EMAIL_JOB:
+        await this.sendPasswordResetEmail(job.data);
+        return;
+      default:
+        this.logger.warn(`Ignoring unknown mail job: ${job.name}`);
     }
+  }
 
-    const { email, name, code, expiresAt } = job.data;
+  private async sendVerificationEmail(data: SendVerificationEmailJob) {
+    const { email, name, code, expiresAt } = data;
     const from =
       this.configService.get<string>('MAIL_FROM') ??
       'Task Manager <no-reply@task-manager.local>';
@@ -49,6 +64,34 @@ export class MailProcessor extends WorkerHost {
         <p>Seu código de verificação é:</p>
         <p><strong style="font-size: 24px; letter-spacing: 4px;">${code}</strong></p>
         <p>Ele expira em ${new Date(expiresAt).toLocaleString('pt-BR')}.</p>
+      `,
+    });
+  }
+
+  private async sendPasswordResetEmail(data: SendPasswordResetEmailJob) {
+    const { email, name, code, expiresAt } = data;
+    const from =
+      this.configService.get<string>('MAIL_FROM') ??
+      'Task Manager <no-reply@task-manager.local>';
+
+    await this.transporter.sendMail({
+      from,
+      to: email,
+      subject: 'Redefina sua senha',
+      text: [
+        `Olá, ${name}.`,
+        '',
+        `Seu código para redefinir a senha é: ${code}`,
+        `Ele expira em ${new Date(expiresAt).toLocaleString('pt-BR')}.`,
+        '',
+        'Se você não solicitou essa alteração, ignore este email.',
+      ].join('\n'),
+      html: `
+        <p>Olá, ${this.escapeHtml(name)}.</p>
+        <p>Seu código para redefinir a senha é:</p>
+        <p><strong style="font-size: 24px; letter-spacing: 4px;">${code}</strong></p>
+        <p>Ele expira em ${new Date(expiresAt).toLocaleString('pt-BR')}.</p>
+        <p>Se você não solicitou essa alteração, ignore este email.</p>
       `,
     });
   }

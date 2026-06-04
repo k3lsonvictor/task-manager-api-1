@@ -10,6 +10,8 @@ import { randomInt } from 'crypto';
 import { VerifyEmailDto } from './dto/verify-email.dto';
 import { MailService } from '../mail/mail.service';
 import { ResendVerificationEmailDto } from './dto/resend-verification-email.dto';
+import { ForgotPasswordDto } from './dto/forgot-password.dto';
+import { ResetPasswordDto } from './dto/reset-password.dto';
 
 @Injectable()
 export class UsersService {
@@ -117,6 +119,65 @@ export class UsersService {
     return { sent: true };
   }
 
+  async forgotPassword(dto: ForgotPasswordDto) {
+    const user = await this.usersRepository.findByEmail(dto.email);
+
+    if (!user) {
+      return { sent: true };
+    }
+
+    const resetCode = this.generateVerificationCode();
+    const passwordResetCodeHash = await bcrypt.hash(resetCode, 10);
+    const passwordResetExpiresAt = this.passwordResetExpiresAt();
+
+    await this.usersRepository.updateById(user.id, {
+      passwordResetCodeHash,
+      passwordResetExpiresAt,
+    });
+
+    await this.mailService.enqueuePasswordResetEmail({
+      email: user.email,
+      name: user.name,
+      code: resetCode,
+      expiresAt: passwordResetExpiresAt,
+    });
+
+    return { sent: true };
+  }
+
+  async resetPassword(dto: ResetPasswordDto) {
+    const user = await this.usersRepository.findByEmail(dto.email);
+
+    if (
+      !user ||
+      !user.passwordResetCodeHash ||
+      !user.passwordResetExpiresAt ||
+      user.passwordResetExpiresAt < new Date()
+    ) {
+      throw new BadRequestException('Invalid or expired reset code');
+    }
+
+    const codeMatches = await bcrypt.compare(
+      dto.code,
+      user.passwordResetCodeHash,
+    );
+
+    if (!codeMatches) {
+      throw new BadRequestException('Invalid or expired reset code');
+    }
+
+    const passwordHash = await bcrypt.hash(dto.password, 10);
+
+    await this.usersRepository.updateById(user.id, {
+      passwordHash,
+      passwordResetCodeHash: null,
+      passwordResetExpiresAt: null,
+      refreshTokenHash: null,
+    });
+
+    return { passwordUpdated: true };
+  }
+
   private generateVerificationCode() {
     return randomInt(100000, 1000000).toString();
   }
@@ -124,6 +185,14 @@ export class UsersService {
   private verificationExpiresAt() {
     const expiresInMinutes = Number(
       process.env.EMAIL_VERIFICATION_EXPIRES_MINUTES ?? 15,
+    );
+
+    return new Date(Date.now() + expiresInMinutes * 60 * 1000);
+  }
+
+  private passwordResetExpiresAt() {
+    const expiresInMinutes = Number(
+      process.env.PASSWORD_RESET_EXPIRES_MINUTES ?? 15,
     );
 
     return new Date(Date.now() + expiresInMinutes * 60 * 1000);
