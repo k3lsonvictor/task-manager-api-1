@@ -5,9 +5,10 @@ import { DatabaseModule } from 'src/database/database.module';
 import { AuthModule } from '../auth/auth.module';
 import { ProjectsModule } from '../projects/projects.module';
 import { TasksRepository } from './tasks.repository';
+import { EventsModule } from '../events/events.module';
 
 @Module({
-  imports: [DatabaseModule, AuthModule, ProjectsModule],
+  imports: [DatabaseModule, AuthModule, ProjectsModule, EventsModule],
   providers: [TasksService, TasksRepository],
   controllers: [TasksController],
   exports: [TasksService, TasksRepository],

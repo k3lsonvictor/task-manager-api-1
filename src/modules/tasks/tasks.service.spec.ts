@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { TasksService } from './tasks.service';
 import { TasksRepository } from './tasks.repository';
 import { ProjectsRepository } from '../projects/projects.repository';
+import { EventsService } from '../events/events.service';
 
 describe('TasksService', () => {
   let service: TasksService;
@@ -25,6 +26,12 @@ describe('TasksService', () => {
           useValue: {
             findProjectById: jest.fn(),
             findMember: jest.fn(),
+          },
+        },
+        {
+          provide: EventsService,
+          useValue: {
+            publishTaskEvent: jest.fn(),
           },
         },
       ],

@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ProjectsController } from './projects.controller';
 import { ProjectsService } from './projects.service';
+import { EventsService } from '../events/events.service';
 
 describe('ProjectsController', () => {
   let controller: ProjectsController;
@@ -19,6 +20,12 @@ describe('ProjectsController', () => {
             deleteProject: jest.fn(),
             addMember: jest.fn(),
             findMembers: jest.fn(),
+          },
+        },
+        {
+          provide: EventsService,
+          useValue: {
+            streamProjectEvents: jest.fn(),
           },
         },
       ],
