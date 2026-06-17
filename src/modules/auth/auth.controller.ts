@@ -9,15 +9,18 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import {
-  AuthService,
+  //AuthService,
   AUTH_COOKIE_MAX_AGE_MS,
   AUTH_COOKIE_NAME,
   REFRESH_COOKIE_MAX_AGE_MS,
   REFRESH_COOKIE_NAME,
-} from './auth.service';
+  TokenService,
+} from '../auth/services/token.service';
 import { LoginDto } from './dto/login.dto';
 import { Public } from 'src/common/decorators/public.decorator';
 import type { CookieOptions, Request, Response } from 'express';
+import { LoginUseCase } from './use-cases/login.use-case';
+import { LogoutUseCase } from './use-cases/logout.use-case';
 
 type RequestWithCookies = Request & {
   cookies?: Record<string, string>;
@@ -25,7 +28,11 @@ type RequestWithCookies = Request & {
 
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+  constructor(
+    private readonly loginUseCase: LoginUseCase,
+    private readonly logoutUseCase: LogoutUseCase,
+    private readonly tokenService: TokenService,
+  ) {}
 
   @Public()
   @Post('login')
@@ -35,7 +42,7 @@ export class AuthController {
     @Res({ passthrough: true }) response: Response,
   ) {
     const { accessToken, refreshToken, user } =
-      await this.authService.login(dto);
+      await this.loginUseCase.execute(dto);
 
     this.setAuthCookies(response, accessToken, refreshToken);
 
@@ -55,7 +62,7 @@ export class AuthController {
       throw new UnauthorizedException('Refresh token cookie not provided');
     }
 
-    const tokens = await this.authService.refresh(refreshToken);
+    const tokens = await this.tokenService.refresh(refreshToken);
 
     this.setAuthCookies(response, tokens.accessToken, tokens.refreshToken);
 
@@ -71,7 +78,7 @@ export class AuthController {
   ) {
     const refreshToken = this.extractCookie(request, REFRESH_COOKIE_NAME);
 
-    await this.authService.logout(refreshToken);
+    await this.logoutUseCase.execute(refreshToken);
 
     response.clearCookie(AUTH_COOKIE_NAME, this.authCookieBaseOptions());
     response.clearCookie(REFRESH_COOKIE_NAME, this.refreshCookieBaseOptions());
