@@ -16,7 +16,7 @@ export class MailService {
   constructor(
     @InjectQueue(MAIL_QUEUE)
     private readonly mailQueue: Queue<MailJob>,
-  ) {}
+  ) { }
 
   enqueueVerificationEmail(data: SendVerificationEmailJob) {
     return this.mailQueue.add(

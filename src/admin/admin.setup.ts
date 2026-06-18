@@ -1,8 +1,14 @@
 import { INestApplication } from '@nestjs/common';
+import { getQueueToken } from '@nestjs/bullmq';
 import { Request, Response } from 'express';
 import { compare, hash } from 'bcrypt';
 import { randomUUID } from 'node:crypto';
 import { createReadStream, existsSync } from 'node:fs';
+import { createBullBoard } from '@bull-board/api';
+import { BullMQAdapter } from '@bull-board/api/bullMQAdapter';
+import { ExpressAdapter } from '@bull-board/express';
+import type { Queue } from 'bullmq';
+import { MAIL_QUEUE } from '../modules/mail/mail.constants';
 
 type SqlModule = typeof import('@adminjs/sql');
 
@@ -79,38 +85,38 @@ const hashPasswordPayload = async (request: {
 
 const prepareCreatePayload =
   (tableName: string) =>
-  async (request: { payload?: Record<string, unknown> }) => {
-    const now = new Date().toISOString();
+    async (request: { payload?: Record<string, unknown> }) => {
+      const now = new Date().toISOString();
 
-    request.payload = {
-      id: randomUUID(),
-      ...request.payload,
-    };
+      request.payload = {
+        id: randomUUID(),
+        ...request.payload,
+      };
 
-    for (const field of TIMESTAMP_FIELDS_BY_TABLE[tableName] ?? []) {
-      if (!request.payload[field]) {
-        request.payload[field] = now;
+      for (const field of TIMESTAMP_FIELDS_BY_TABLE[tableName] ?? []) {
+        if (!request.payload[field]) {
+          request.payload[field] = now;
+        }
       }
-    }
 
-    return hashPasswordPayload(request);
-  };
+      return hashPasswordPayload(request);
+    };
 
 const prepareEditPayload =
   (tableName: string) =>
-  async (request: { payload?: Record<string, unknown> }) => {
-    if (!request.payload) {
-      return request;
-    }
+    async (request: { payload?: Record<string, unknown> }) => {
+      if (!request.payload) {
+        return request;
+      }
 
-    const now = new Date().toISOString();
+      const now = new Date().toISOString();
 
-    for (const field of UPDATED_AT_FIELDS_BY_TABLE[tableName] ?? []) {
-      request.payload[field] = now;
-    }
+      for (const field of UPDATED_AT_FIELDS_BY_TABLE[tableName] ?? []) {
+        request.payload[field] = now;
+      }
 
-    return hashPasswordPayload(request);
-  };
+      return hashPasswordPayload(request);
+    };
 
 const baseResourceOptions = (tableName: string) => ({
   actions: {
@@ -249,6 +255,21 @@ export async function setupAdmin(app: INestApplication) {
       },
     );
   }
+
+  const mailQueue = app.get<Queue>(getQueueToken(MAIL_QUEUE));
+  const dlqQueue = app.get<Queue>(getQueueToken('emails-dlq'));
+  const serverAdapter = new ExpressAdapter();
+  serverAdapter.setBasePath('/admin/queues');
+
+  createBullBoard({
+    queues: [
+      new BullMQAdapter(mailQueue),
+      new BullMQAdapter(dlqQueue),
+    ],
+    serverAdapter,
+  });
+
+  app.use('/admin/queues', serverAdapter.getRouter());
 
   app.use(admin.options.rootPath, router);
 }

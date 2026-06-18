@@ -20,11 +20,12 @@ import { MAIL_QUEUE } from './mail.constants';
         },
       }),
     }),
-    BullModule.registerQueue({
-      name: MAIL_QUEUE,
-    }),
+    BullModule.registerQueue(
+      { name: MAIL_QUEUE },
+      { name: 'emails-dlq' },
+    ),
   ],
   providers: [MailService, MailProcessor],
   exports: [MailService],
 })
-export class MailModule {}
+export class MailModule { }

@@ -1,7 +1,7 @@
-import { Processor, WorkerHost } from '@nestjs/bullmq';
+import { InjectQueue, Processor, WorkerHost } from '@nestjs/bullmq';
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import type { Job } from 'bullmq';
+import type { Job, Queue } from 'bullmq';
 import * as nodemailer from 'nodemailer';
 import type { Transporter } from 'nodemailer';
 import {
@@ -20,7 +20,11 @@ export class MailProcessor extends WorkerHost {
   private readonly logger = new Logger(MailProcessor.name);
   private readonly transporter: Transporter;
 
-  constructor(private readonly configService: ConfigService) {
+  constructor(
+    @InjectQueue('emails-dlq')
+    private readonly dlqQueue: Queue,
+    private readonly configService: ConfigService
+  ) {
     super();
     this.transporter = nodemailer.createTransport({
       host: this.configService.get<string>('MAIL_HOST'),
@@ -31,9 +35,13 @@ export class MailProcessor extends WorkerHost {
   }
 
   async process(job: Job<MailJob>) {
+    this.logger.debug(
+      `Processing job ${job.id} (${job.name}) - Attempt ${job.attemptsMade + 1}/${job.opts.attempts}`,
+    );
+
     switch (job.name) {
       case SEND_VERIFICATION_EMAIL_JOB:
-        await this.sendVerificationEmail(job.data);
+        await this.sendVerificationEmail(job);
         return;
       case SEND_PASSWORD_RESET_EMAIL_JOB:
         await this.sendPasswordResetEmail(job.data);
@@ -43,29 +51,54 @@ export class MailProcessor extends WorkerHost {
     }
   }
 
-  private async sendVerificationEmail(data: SendVerificationEmailJob) {
-    const { email, name, code, expiresAt } = data;
+  private async sendVerificationEmail(job: Job<SendVerificationEmailJob>) {
+    const { email, name, code, expiresAt } = job.data;
     const from =
       this.configService.get<string>('MAIL_FROM') ??
       'Task Manager <no-reply@task-manager.local>';
 
-    await this.transporter.sendMail({
-      from,
-      to: email,
-      subject: 'Confirme seu e-mail',
-      text: [
-        `Olá, ${name}.`,
-        '',
-        `Seu código de verificação é: ${code}`,
-        `Ele expira em ${new Date(expiresAt).toLocaleString('pt-BR')}.`,
-      ].join('\n'),
-      html: `
-        <p>Olá, ${this.escapeHtml(name)}.</p>
-        <p>Seu código de verificação é:</p>
-        <p><strong style="font-size: 24px; letter-spacing: 4px;">${code}</strong></p>
-        <p>Ele expira em ${new Date(expiresAt).toLocaleString('pt-BR')}.</p>
-      `,
-    });
+    try {
+      if (
+        this.configService.get<string>('MAIL_FORCE_VERIFICATION_ERROR') === 'true'
+      ) {
+        throw new Error('Forced verification email failure for testing');
+      }
+
+      await this.transporter.sendMail({
+        from,
+        to: email,
+        subject: 'Confirme seu e-mail',
+        text: [
+          `Olá, ${name}.`,
+          '',
+          `Seu código de verificação é: ${code}`,
+          `Ele expira em ${new Date(expiresAt).toLocaleString('pt-BR')}.`,
+        ].join('\n'),
+        html: `
+          <p>Olá, ${this.escapeHtml(name)}.</p>
+          <p>Seu código de verificação é:</p>
+          <p><strong style="font-size: 24px; letter-spacing: 4px;">${code}</strong></p>
+          <p>Ele expira em ${new Date(expiresAt).toLocaleString('pt-BR')}.</p>
+        `,
+      });
+    } catch (error) {
+      const isLastAttempt = job.attemptsMade + 1 >= job.opts.attempts!;
+      this.logger.error(
+        `Job ${job.id} failed (Attempt ${job.attemptsMade + 1}/${job.opts.attempts}) - ${isLastAttempt ? 'Moving to DLQ' : 'Will retry'}`,
+        (error as Error).message,
+      );
+
+      if (isLastAttempt) {
+        this.logger.error(`Failed to send verification email to ${email}`, error as Error);
+        await this.dlqQueue.add('failed-email', {
+          originalJobId: job.id,
+          data: job.data,
+          reason: (error as Error).message,
+        });
+      }
+
+      throw error;
+    }
   }
 
   private async sendPasswordResetEmail(data: SendPasswordResetEmailJob) {
