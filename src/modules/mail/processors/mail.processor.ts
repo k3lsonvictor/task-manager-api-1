@@ -4,6 +4,7 @@ import { ConfigService } from '@nestjs/config';
 import type { Job, Queue } from 'bullmq';
 import * as nodemailer from 'nodemailer';
 import type { Transporter } from 'nodemailer';
+import { MailtrapTransport } from 'mailtrap';
 import {
   MAIL_QUEUE,
   SEND_PASSWORD_RESET_EMAIL_JOB,
@@ -18,14 +19,44 @@ type MailJob = SendVerificationEmailJob | SendPasswordResetEmailJob;
 @Processor(MAIL_QUEUE)
 export class MailProcessor extends WorkerHost {
   private readonly logger = new Logger(MailProcessor.name);
-  private readonly transporter: Transporter;
+  private readonly transporter?: Transporter;
 
   constructor(
     @InjectQueue('emails-dlq')
     private readonly dlqQueue: Queue,
-    private readonly configService: ConfigService
+    private readonly configService: ConfigService,
   ) {
     super();
+
+    if (this.configService.get<string>('MAIL_PROVIDER') === 'mailtrap') {
+      const token = this.configService.get<string>('MAILTRAP_API_KEY');
+      const sandbox =
+        this.configService.get<string>('MAILTRAP_USE_SANDBOX') !== 'false';
+      const testInboxId = sandbox
+        ? Number(this.configService.get<string>('MAILTRAP_INBOX_ID'))
+        : undefined;
+
+      if (!token) {
+        throw new Error('Set MAILTRAP_API_KEY to use Mailtrap.');
+      }
+
+      if (sandbox && (!testInboxId || !Number.isInteger(testInboxId))) {
+        throw new Error(
+          'Set a valid MAILTRAP_INBOX_ID to use Mailtrap Sandbox.',
+        );
+      }
+
+      this.transporter = nodemailer.createTransport(
+        MailtrapTransport({
+          token,
+          sandbox,
+          testInboxId,
+        }),
+      );
+
+      return;
+    }
+
     this.transporter = nodemailer.createTransport({
       host: this.configService.get<string>('MAIL_HOST'),
       port: Number(this.configService.get<string>('MAIL_PORT') ?? 587),
@@ -53,19 +84,16 @@ export class MailProcessor extends WorkerHost {
 
   private async sendVerificationEmail(job: Job<SendVerificationEmailJob>) {
     const { email, name, code, expiresAt } = job.data;
-    const from =
-      this.configService.get<string>('MAIL_FROM') ??
-      'Task Manager <no-reply@task-manager.local>';
 
     try {
       if (
-        this.configService.get<string>('MAIL_FORCE_VERIFICATION_ERROR') === 'true'
+        this.configService.get<string>('MAIL_FORCE_VERIFICATION_ERROR') ===
+        'true'
       ) {
         throw new Error('Forced verification email failure for testing');
       }
 
-      await this.transporter.sendMail({
-        from,
+      await this.sendMail({
         to: email,
         subject: 'Confirme seu e-mail',
         text: [
@@ -89,7 +117,10 @@ export class MailProcessor extends WorkerHost {
       );
 
       if (isLastAttempt) {
-        this.logger.error(`Failed to send verification email to ${email}`, error as Error);
+        this.logger.error(
+          `Failed to send verification email to ${email}`,
+          error as Error,
+        );
         await this.dlqQueue.add('failed-email', {
           originalJobId: job.id,
           data: job.data,
@@ -103,12 +134,8 @@ export class MailProcessor extends WorkerHost {
 
   private async sendPasswordResetEmail(data: SendPasswordResetEmailJob) {
     const { email, name, code, expiresAt } = data;
-    const from =
-      this.configService.get<string>('MAIL_FROM') ??
-      'Task Manager <no-reply@task-manager.local>';
 
-    await this.transporter.sendMail({
-      from,
+    await this.sendMail({
       to: email,
       subject: 'Redefina sua senha',
       text: [
@@ -138,6 +165,31 @@ export class MailProcessor extends WorkerHost {
     }
 
     return { user, pass };
+  }
+
+  private sendMail(message: {
+    to: string;
+    subject: string;
+    text: string;
+    html: string;
+  }) {
+    const usesMailtrap =
+      this.configService.get<string>('MAIL_PROVIDER') === 'mailtrap';
+
+    return this.transporter!.sendMail({
+      from: usesMailtrap
+        ? {
+            name:
+              this.configService.get<string>('MAIL_FROM_NAME') ??
+              'Task Manager',
+            address:
+              this.configService.get<string>('MAIL_FROM_EMAIL') ??
+              'sandbox@example.com',
+          }
+        : (this.configService.get<string>('MAIL_FROM') ??
+          'Task Manager <no-reply@task-manager.local>'),
+      ...message,
+    });
   }
 
   private escapeHtml(value: string) {

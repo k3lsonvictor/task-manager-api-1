@@ -69,6 +69,7 @@ MAIL_HOST=localhost
 MAIL_PORT=1025
 MAIL_SECURE=false
 MAIL_FROM=Task Manager <no-reply@task-manager.local>
+MAIL_PROVIDER=smtp
 
 EMAIL_VERIFICATION_EXPIRES_MINUTES=15
 EMAIL_VERIFICATION_ENABLED=false
@@ -109,6 +110,31 @@ A aplicação ficará disponível nos seguintes endereços:
 | AdminJS | `http://localhost:3000/admin` |
 | Filas | `http://localhost:3000/admin/queues` |
 | Mailpit | `http://localhost:8025` |
+
+### Mailtrap no Railway
+
+Para testar e-mails no Railway sem usar SMTP, configure o Mailtrap Email Sandbox pela API HTTPS:
+
+```env
+MAIL_PROVIDER=mailtrap
+MAILTRAP_API_KEY=seu-token-da-api
+MAILTRAP_USE_SANDBOX=true
+MAILTRAP_INBOX_ID=id-numerico-do-inbox
+MAIL_FROM_NAME=Task Manager
+MAIL_FROM_EMAIL=sandbox@example.com
+```
+
+O token é criado em **Settings → API Tokens** no Mailtrap. O ID numérico está disponível no inbox do Email Sandbox. As mensagens serão capturadas pelo Mailtrap e não chegarão ao destinatário real.
+
+Para envio real, verifique um domínio no Mailtrap e use:
+
+```env
+MAIL_PROVIDER=mailtrap
+MAILTRAP_API_KEY=seu-token-de-producao
+MAILTRAP_USE_SANDBOX=false
+MAIL_FROM_NAME=Task Manager
+MAIL_FROM_EMAIL=no-reply@seu-dominio.com
+```
 
 ## Autenticação
 
