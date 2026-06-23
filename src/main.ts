@@ -31,7 +31,9 @@ async function bootstrap() {
   const document = SwaggerModule.createDocument(app, config);
   SwaggerModule.setup('docs', app, document);
 
-  await setupAdmin(app);
+  if (process.env.ADMIN_ENABLED !== 'false') {
+    await setupAdmin(app);
+  }
 
   await app.listen(process.env.PORT ?? 3000);
 }
