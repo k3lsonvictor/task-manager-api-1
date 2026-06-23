@@ -27,8 +27,9 @@ export class UsersRepository {
     name: string;
     email: string;
     passwordHash: string;
-    verificationCodeHash: string;
-    verificationExpiresAt: Date;
+    emailVerified?: boolean;
+    verificationCodeHash?: string;
+    verificationExpiresAt?: Date;
   }) {
     return this.prisma.user.create({
       data,

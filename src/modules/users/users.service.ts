@@ -12,12 +12,14 @@ import { MailService } from '../mail/mail.service';
 import { ResendVerificationEmailDto } from './dto/resend-verification-email.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
+import { ConfigService } from '@nestjs/config';
 
 @Injectable()
 export class UsersService {
   constructor(
     private readonly usersRepository: UsersRepository,
     private readonly mailService: MailService,
+    private readonly configService: ConfigService,
   ) {}
 
   async create(dto: CreateUserDto) {
@@ -28,6 +30,24 @@ export class UsersService {
     }
 
     const passwordHash = await bcrypt.hash(dto.password, 10);
+
+    if (!this.emailVerificationEnabled) {
+      const user = await this.usersRepository.create({
+        name: dto.name,
+        email: dto.email,
+        passwordHash,
+        emailVerified: true,
+      });
+
+      return {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        emailVerified: user.emailVerified,
+        createdAt: user.createdAt,
+      };
+    }
+
     const verificationCode = this.generateVerificationCode();
     const verificationCodeHash = await bcrypt.hash(verificationCode, 10);
     const verificationExpiresAt = this.verificationExpiresAt();
@@ -196,5 +216,11 @@ export class UsersService {
     );
 
     return new Date(Date.now() + expiresInMinutes * 60 * 1000);
+  }
+
+  private get emailVerificationEnabled() {
+    return (
+      this.configService.get<string>('EMAIL_VERIFICATION_ENABLED') === 'true'
+    );
   }
 }
