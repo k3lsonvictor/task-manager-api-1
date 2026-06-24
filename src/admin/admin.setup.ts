@@ -1,6 +1,6 @@
 import { INestApplication } from '@nestjs/common';
 import { getQueueToken } from '@nestjs/bullmq';
-import { Request, Response } from 'express';
+import { NextFunction, Request, Response } from 'express';
 import { compare, hash } from 'bcrypt';
 import { randomUUID } from 'node:crypto';
 import { createReadStream, existsSync } from 'node:fs';
@@ -9,8 +9,6 @@ import { BullMQAdapter } from '@bull-board/api/bullMQAdapter';
 import { ExpressAdapter } from '@bull-board/express';
 import type { Queue } from 'bullmq';
 import { MAIL_QUEUE } from '../modules/mail/mail.constants';
-
-type SqlModule = typeof import('@adminjs/sql');
 
 const ADMIN_ROOT_PATH = '/admin';
 const TABLES = ['User', 'Project', 'Step', 'ProjectMember', 'Task'];
@@ -59,6 +57,56 @@ const isBcryptHash = (password: string) =>
   password.startsWith('$2b$') ||
   password.startsWith('$2y$');
 
+export const authenticateAdmin = async (
+  loginEmail: string,
+  loginPassword: string,
+  email: string,
+  password: string,
+) => {
+  const isEmailValid = loginEmail === email;
+  const isPasswordValid = isBcryptHash(password)
+    ? await compare(loginPassword, password)
+    : loginPassword === password;
+
+  return isEmailValid && isPasswordValid;
+};
+
+export const requireQueueAdmin = (email: string, password: string) => {
+  return async (request: Request, response: Response, next: NextFunction) => {
+    const authorization = request.header('authorization');
+
+    if (!authorization?.startsWith('Basic ')) {
+      response
+        .status(401)
+        .set('WWW-Authenticate', 'Basic realm="Task Manager queues"')
+        .send('Admin authentication required');
+      return;
+    }
+
+    const credentials = Buffer.from(
+      authorization.slice('Basic '.length),
+      'base64',
+    ).toString('utf8');
+    const separatorIndex = credentials.indexOf(':');
+    const loginEmail = credentials.slice(0, separatorIndex);
+    const loginPassword = credentials.slice(separatorIndex + 1);
+
+    if (
+      separatorIndex < 0 ||
+      !(await authenticateAdmin(loginEmail, loginPassword, email, password))
+    ) {
+      response
+        .status(401)
+        .set('WWW-Authenticate', 'Basic realm="Task Manager queues"')
+        .send('Invalid admin credentials');
+      return;
+    }
+
+    response.set('Cache-Control', 'no-store');
+    next();
+  };
+};
+
 const hashPasswordPayload = async (request: {
   payload?: Record<string, unknown>;
 }) => {
@@ -85,38 +133,38 @@ const hashPasswordPayload = async (request: {
 
 const prepareCreatePayload =
   (tableName: string) =>
-    async (request: { payload?: Record<string, unknown> }) => {
-      const now = new Date().toISOString();
+  async (request: { payload?: Record<string, unknown> }) => {
+    const now = new Date().toISOString();
 
-      request.payload = {
-        id: randomUUID(),
-        ...request.payload,
-      };
-
-      for (const field of TIMESTAMP_FIELDS_BY_TABLE[tableName] ?? []) {
-        if (!request.payload[field]) {
-          request.payload[field] = now;
-        }
-      }
-
-      return hashPasswordPayload(request);
+    request.payload = {
+      id: randomUUID(),
+      ...request.payload,
     };
+
+    for (const field of TIMESTAMP_FIELDS_BY_TABLE[tableName] ?? []) {
+      if (!request.payload[field]) {
+        request.payload[field] = now;
+      }
+    }
+
+    return hashPasswordPayload(request);
+  };
 
 const prepareEditPayload =
   (tableName: string) =>
-    async (request: { payload?: Record<string, unknown> }) => {
-      if (!request.payload) {
-        return request;
-      }
+  async (request: { payload?: Record<string, unknown> }) => {
+    if (!request.payload) {
+      return request;
+    }
 
-      const now = new Date().toISOString();
+    const now = new Date().toISOString();
 
-      for (const field of UPDATED_AT_FIELDS_BY_TABLE[tableName] ?? []) {
-        request.payload[field] = now;
-      }
+    for (const field of UPDATED_AT_FIELDS_BY_TABLE[tableName] ?? []) {
+      request.payload[field] = now;
+    }
 
-      return hashPasswordPayload(request);
-    };
+    return hashPasswordPayload(request);
+  };
 
 const baseResourceOptions = (tableName: string) => ({
   actions: {
@@ -188,7 +236,7 @@ export async function setupAdmin(app: INestApplication) {
   ] = await Promise.all([
     import('adminjs'),
     import('@adminjs/express'),
-    import('@adminjs/sql') as Promise<SqlModule>,
+    import('@adminjs/sql'),
   ]);
 
   const { default: Adapter, Database, Resource } = sqlAdapter;
@@ -220,12 +268,9 @@ export async function setupAdmin(app: INestApplication) {
     admin,
     {
       authenticate: async (loginEmail: string, loginPassword: string) => {
-        const isEmailValid = loginEmail === email;
-        const isPasswordValid = isBcryptHash(password)
-          ? await compare(loginPassword, password)
-          : loginPassword === password;
-
-        if (!isEmailValid || !isPasswordValid) {
+        if (
+          !(await authenticateAdmin(loginEmail, loginPassword, email, password))
+        ) {
           return null;
         }
 
@@ -262,14 +307,15 @@ export async function setupAdmin(app: INestApplication) {
   serverAdapter.setBasePath('/admin/queues');
 
   createBullBoard({
-    queues: [
-      new BullMQAdapter(mailQueue),
-      new BullMQAdapter(dlqQueue),
-    ],
+    queues: [new BullMQAdapter(mailQueue), new BullMQAdapter(dlqQueue)],
     serverAdapter,
   });
 
-  app.use('/admin/queues', serverAdapter.getRouter());
+  app.use(
+    '/admin/queues',
+    requireQueueAdmin(email, password),
+    serverAdapter.getRouter(),
+  );
 
   app.use(admin.options.rootPath, router);
 }

@@ -13,7 +13,7 @@ describe('TasksController', () => {
           provide: TasksService,
           useValue: {
             create: jest.fn(),
-            findTaksByProject: jest.fn(),
+            findTasksByProject: jest.fn(),
             findTaskById: jest.fn(),
             updateTask: jest.fn(),
             deleteTask: jest.fn(),

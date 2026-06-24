@@ -6,6 +6,7 @@ import {
 import { TasksRepository } from './tasks.repository';
 import { ProjectsRepository } from '../projects/projects.repository';
 import { EventsService } from '../events/events.service';
+import { StepsRepository } from '../steps/steps.repository';
 
 type dtoCreateTask = {
   name: string;
@@ -26,6 +27,7 @@ export class TasksService {
   constructor(
     private readonly tasksRepository: TasksRepository,
     private readonly projectsRepository: ProjectsRepository,
+    private readonly stepsRepository: StepsRepository,
     private readonly eventsService: EventsService,
   ) {}
 
@@ -34,12 +36,6 @@ export class TasksService {
     userId: string,
     taskId: string,
   ) {
-    const task = await this.tasksRepository.findTaskById(taskId, projectId);
-
-    if (!task) {
-      throw new NotFoundException('Task not found');
-    }
-
     const project = await this.projectsRepository.findProjectById(projectId);
 
     if (!project) {
@@ -47,6 +43,16 @@ export class TasksService {
     }
 
     const member = await this.projectsRepository.findMember(projectId, userId);
+
+    if (project.ownerId !== userId && !member) {
+      throw new ForbiddenException('You are not a member of this project');
+    }
+
+    const task = await this.tasksRepository.findTaskById(taskId, projectId);
+
+    if (!task) {
+      throw new NotFoundException('Task not found');
+    }
 
     const isProjectOwner = project.ownerId === userId;
     const canManageByRole = member && ['OWNER', 'ADMIN'].includes(member.role);
@@ -60,6 +66,9 @@ export class TasksService {
   }
 
   async create(data: dtoCreateTask, userId: string, projectId: string) {
+    await this.assertProjectMember(projectId, userId);
+    await this.assertStepBelongsToProject(data.stepId, projectId);
+
     const task = await this.tasksRepository.create({
       name: data.name,
       description: data.description,
@@ -74,12 +83,22 @@ export class TasksService {
     return task;
   }
 
-  findTaksByProject(projectId: string) {
+  async findTasksByProject(projectId: string, userId: string) {
+    await this.assertProjectMember(projectId, userId);
+
     return this.tasksRepository.findTasks(projectId);
   }
 
-  findTaskById(taskId: string, projectId: string) {
-    return this.tasksRepository.findTaskById(taskId, projectId);
+  async findTaskById(taskId: string, projectId: string, userId: string) {
+    await this.assertProjectMember(projectId, userId);
+
+    const task = await this.tasksRepository.findTaskById(taskId, projectId);
+
+    if (!task) {
+      throw new NotFoundException('Task not found');
+    }
+
+    return task;
   }
 
   async updateTask(
@@ -89,6 +108,7 @@ export class TasksService {
     taskId: string,
   ) {
     await this.assertCanManageProject(projectId, creatorTaskId, taskId);
+    await this.assertStepBelongsToProject(data.stepId, projectId);
 
     const task = await this.tasksRepository.edit({
       name: data.name,
@@ -111,5 +131,34 @@ export class TasksService {
     this.eventsService.publishTaskEvent(projectId, 'task.deleted', task);
 
     return task;
+  }
+
+  private async assertProjectMember(projectId: string, userId: string) {
+    const project = await this.projectsRepository.findProjectById(projectId);
+
+    if (!project) {
+      throw new NotFoundException('Project not found');
+    }
+
+    const member = await this.projectsRepository.findMember(projectId, userId);
+
+    if (project.ownerId !== userId && !member) {
+      throw new ForbiddenException('You are not a member of this project');
+    }
+  }
+
+  private async assertStepBelongsToProject(
+    stepId: string | undefined,
+    projectId: string,
+  ) {
+    if (!stepId) {
+      return;
+    }
+
+    const step = await this.stepsRepository.findById(stepId, projectId);
+
+    if (!step) {
+      throw new NotFoundException('Step not found in this project');
+    }
   }
 }

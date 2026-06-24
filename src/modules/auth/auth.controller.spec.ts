@@ -1,32 +1,36 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { AuthController } from './auth.controller';
-import { AuthService } from './auth.service';
+import { LoginUseCase } from './use-cases/login.use-case';
+import { LogoutUseCase } from './use-cases/logout.use-case';
+import { TokenService } from './services/token.service';
+import type { Response } from 'express';
 
 describe('AuthController', () => {
   let controller: AuthController;
-  let authService: jest.Mocked<
-    Pick<AuthService, 'login' | 'refresh' | 'logout'>
-  >;
+  let loginUseCase: { execute: jest.Mock };
 
   beforeEach(async () => {
-    const authServiceMock = {
-      login: jest.fn(),
-      refresh: jest.fn(),
-      logout: jest.fn(),
-    };
+    loginUseCase = { execute: jest.fn() };
 
     const module: TestingModule = await Test.createTestingModule({
       controllers: [AuthController],
       providers: [
         {
-          provide: AuthService,
-          useValue: authServiceMock,
+          provide: LoginUseCase,
+          useValue: loginUseCase,
+        },
+        {
+          provide: LogoutUseCase,
+          useValue: { execute: jest.fn() },
+        },
+        {
+          provide: TokenService,
+          useValue: { refresh: jest.fn() },
         },
       ],
     }).compile();
 
     controller = module.get<AuthController>(AuthController);
-    authService = authServiceMock;
   });
 
   it('should be defined', () => {
@@ -34,7 +38,7 @@ describe('AuthController', () => {
   });
 
   it('returns the access token in the login response body', async () => {
-    authService.login.mockResolvedValue({
+    loginUseCase.execute.mockResolvedValue({
       accessToken: 'access-token',
       refreshToken: 'refresh-token',
       user: {
@@ -52,7 +56,7 @@ describe('AuthController', () => {
     await expect(
       controller.login(
         { email: 'kelson@gmail.com', password: '12345678' },
-        response as any,
+        response as unknown as Response,
       ),
     ).resolves.toEqual({
       accessToken: 'access-token',

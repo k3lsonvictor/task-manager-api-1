@@ -18,22 +18,22 @@ API REST para gerenciamento colaborativo de projetos e tarefas, construída com 
 
 ## Stack técnica
 
-| Categoria | Tecnologias | Uso no projeto |
-| --- | --- | --- |
-| Linguagem e runtime | TypeScript 5, Node.js | Tipagem, compilação e execução da API |
-| Framework | NestJS 11, Express | Estrutura modular, injeção de dependências e servidor HTTP |
-| Banco de dados | PostgreSQL 16 | Persistência de usuários, projetos, etapas e tarefas |
-| ORM e migrations | Prisma 7, Prisma PostgreSQL Adapter | Modelagem, queries tipadas e evolução do banco |
-| Autenticação | JWT, Passport, bcrypt | Access e refresh tokens, proteção de rotas e hash de credenciais |
-| Filas e mensageria | Redis 7, BullMQ 5 | Processamento assíncrono, retentativas e dead-letter queue de e-mails |
-| E-mail | Nodemailer 8, Mailpit | Envio SMTP e inspeção local de mensagens |
-| Tempo real | RxJS, Server-Sent Events | Distribuição de eventos de projetos aos clientes conectados |
-| Documentação | Swagger, OpenAPI | Documentação e exploração interativa dos endpoints |
-| Administração | AdminJS, Bull Board | Gerenciamento dos dados e monitoramento das filas |
-| Validação | class-validator, class-transformer | Validação e saneamento dos dados de entrada |
-| Testes | Jest 30, Supertest | Testes unitários e end-to-end |
-| Qualidade | ESLint, Prettier | Análise estática e padronização do código |
-| Infraestrutura | Docker Compose, pnpm | Serviços locais e gerenciamento de dependências |
+| Categoria           | Tecnologias                         | Uso no projeto                                                        |
+| ------------------- | ----------------------------------- | --------------------------------------------------------------------- |
+| Linguagem e runtime | TypeScript 5, Node.js               | Tipagem, compilação e execução da API                                 |
+| Framework           | NestJS 11, Express                  | Estrutura modular, injeção de dependências e servidor HTTP            |
+| Banco de dados      | PostgreSQL 16                       | Persistência de usuários, projetos, etapas e tarefas                  |
+| ORM e migrations    | Prisma 7, Prisma PostgreSQL Adapter | Modelagem, queries tipadas e evolução do banco                        |
+| Autenticação        | JWT, Passport, bcrypt               | Access e refresh tokens, proteção de rotas e hash de credenciais      |
+| Filas e mensageria  | Redis 7, BullMQ 5                   | Processamento assíncrono, retentativas e dead-letter queue de e-mails |
+| E-mail              | Nodemailer 8, Mailpit               | Envio SMTP e inspeção local de mensagens                              |
+| Tempo real          | RxJS, Server-Sent Events            | Distribuição de eventos de projetos aos clientes conectados           |
+| Documentação        | Swagger, OpenAPI                    | Documentação e exploração interativa dos endpoints                    |
+| Administração       | AdminJS, Bull Board                 | Gerenciamento dos dados e monitoramento das filas                     |
+| Validação           | class-validator, class-transformer  | Validação e saneamento dos dados de entrada                           |
+| Testes              | Jest 30, Supertest                  | Testes unitários e end-to-end                                         |
+| Qualidade           | ESLint, Prettier                    | Análise estática e padronização do código                             |
+| Infraestrutura      | Docker Compose, pnpm                | Serviços locais e gerenciamento de dependências                       |
 
 ## Pré-requisitos
 
@@ -82,6 +82,8 @@ ADMIN_COOKIE_SECRET=troque-por-uma-chave-longa-e-aleatoria
 
 > Em produção, use segredos fortes, configure um servidor SMTP real e nunca mantenha as credenciais de exemplo.
 
+O AdminJS e o Bull Board usam `ADMIN_EMAIL` e `ADMIN_PASSWORD`. O Bull Board solicita essas credenciais via HTTP Basic e deve ser acessado somente por HTTPS em produção.
+
 3. Inicie PostgreSQL, Redis e Mailpit:
 
 ```bash
@@ -103,13 +105,15 @@ pnpm start:dev
 
 A aplicação ficará disponível nos seguintes endereços:
 
-| Serviço | URL |
-| --- | --- |
-| API | `http://localhost:3000` |
-| Swagger | `http://localhost:3000/docs` |
-| AdminJS | `http://localhost:3000/admin` |
-| Filas | `http://localhost:3000/admin/queues` |
-| Mailpit | `http://localhost:8025` |
+| Serviço | URL                                  |
+| ------- | ------------------------------------ |
+| API     | `http://localhost:3000`              |
+| Swagger | `http://localhost:3000/docs`         |
+| AdminJS | `http://localhost:3000/admin`        |
+| Filas   | `http://localhost:3000/admin/queues` |
+| Mailpit | `http://localhost:8025`              |
+
+As decisões e regras de autorização estão documentadas em [Reforço de controle de acesso](docs/access-control-hardening.md).
 
 ### Mailtrap no Railway
 
@@ -189,34 +193,34 @@ Esse arquivo pode ser importado em ferramentas como Postman e Insomnia ou usado 
 
 Todas as rotas são protegidas por padrão. As rotas públicas estão indicadas na tabela.
 
-| Método | Rota | Descrição | Acesso |
-| --- | --- | --- | --- |
-| `GET` | `/hello` | Verifica se a API está respondendo | Público |
-| `POST` | `/users` | Cria uma conta | Público |
-| `POST` | `/users/verify-email` | Confirma o e-mail com um código de 6 dígitos | Público |
-| `POST` | `/users/resend-verification-email` | Reenvia o código de confirmação | Público |
-| `POST` | `/users/forgot-password` | Solicita a recuperação de senha | Público |
-| `POST` | `/users/reset-password` | Redefine a senha com o código recebido | Público |
-| `POST` | `/auth/login` | Autentica e cria a sessão | Público |
-| `POST` | `/auth/refresh` | Renova os tokens da sessão | Público |
-| `POST` | `/auth/logout` | Invalida a sessão e remove os cookies | Público |
-| `POST` | `/projects` | Cria um projeto | Protegido |
-| `GET` | `/projects` | Lista os projetos do usuário | Protegido |
-| `GET` | `/projects/:projectId` | Busca um projeto | Protegido |
-| `PATCH` | `/projects/:id` | Atualiza um projeto | Protegido |
-| `DELETE` | `/projects/:id` | Remove um projeto | Protegido |
-| `GET` | `/projects/:projectId/members` | Lista os membros do projeto | Protegido |
-| `GET` | `/projects/:projectId/events` | Abre o stream SSE do projeto | Protegido |
-| `POST` | `/steps/:projectId` | Cria uma etapa | Protegido |
-| `GET` | `/steps/:projectId` | Lista as etapas do projeto | Protegido |
-| `GET` | `/steps/:projectId/:stepId` | Busca uma etapa | Protegido |
-| `PATCH` | `/steps/:projectId/:stepId` | Atualiza ou reposiciona uma etapa | Protegido |
-| `DELETE` | `/steps/:projectId/:stepId` | Remove uma etapa | Protegido |
-| `POST` | `/tasks/:projectId` | Cria uma tarefa | Protegido |
-| `GET` | `/tasks/:projectId` | Lista as tarefas do projeto | Protegido |
-| `GET` | `/tasks/:projectId/:taskId` | Busca uma tarefa | Protegido |
-| `PATCH` | `/tasks/:projectId/:taskId` | Atualiza, move ou reposiciona uma tarefa | Protegido |
-| `DELETE` | `/tasks/:projectId/:taskId` | Remove uma tarefa | Protegido |
+| Método   | Rota                               | Descrição                                    | Acesso    |
+| -------- | ---------------------------------- | -------------------------------------------- | --------- |
+| `GET`    | `/hello`                           | Verifica se a API está respondendo           | Público   |
+| `POST`   | `/users`                           | Cria uma conta                               | Público   |
+| `POST`   | `/users/verify-email`              | Confirma o e-mail com um código de 6 dígitos | Público   |
+| `POST`   | `/users/resend-verification-email` | Reenvia o código de confirmação              | Público   |
+| `POST`   | `/users/forgot-password`           | Solicita a recuperação de senha              | Público   |
+| `POST`   | `/users/reset-password`            | Redefine a senha com o código recebido       | Público   |
+| `POST`   | `/auth/login`                      | Autentica e cria a sessão                    | Público   |
+| `POST`   | `/auth/refresh`                    | Renova os tokens da sessão                   | Público   |
+| `POST`   | `/auth/logout`                     | Invalida a sessão e remove os cookies        | Público   |
+| `POST`   | `/projects`                        | Cria um projeto                              | Protegido |
+| `GET`    | `/projects`                        | Lista os projetos do usuário                 | Protegido |
+| `GET`    | `/projects/:projectId`             | Busca um projeto                             | Protegido |
+| `PATCH`  | `/projects/:id`                    | Atualiza um projeto                          | Protegido |
+| `DELETE` | `/projects/:id`                    | Remove um projeto                            | Protegido |
+| `GET`    | `/projects/:projectId/members`     | Lista os membros do projeto                  | Protegido |
+| `GET`    | `/projects/:projectId/events`      | Abre o stream SSE do projeto                 | Protegido |
+| `POST`   | `/steps/:projectId`                | Cria uma etapa                               | Protegido |
+| `GET`    | `/steps/:projectId`                | Lista as etapas do projeto                   | Protegido |
+| `GET`    | `/steps/:projectId/:stepId`        | Busca uma etapa                              | Protegido |
+| `PATCH`  | `/steps/:projectId/:stepId`        | Atualiza ou reposiciona uma etapa            | Protegido |
+| `DELETE` | `/steps/:projectId/:stepId`        | Remove uma etapa                             | Protegido |
+| `POST`   | `/tasks/:projectId`                | Cria uma tarefa                              | Protegido |
+| `GET`    | `/tasks/:projectId`                | Lista as tarefas do projeto                  | Protegido |
+| `GET`    | `/tasks/:projectId/:taskId`        | Busca uma tarefa                             | Protegido |
+| `PATCH`  | `/tasks/:projectId/:taskId`        | Atualiza, move ou reposiciona uma tarefa     | Protegido |
+| `DELETE` | `/tasks/:projectId/:taskId`        | Remove uma tarefa                            | Protegido |
 
 ### Exemplo de uso
 
@@ -254,19 +258,19 @@ curl -b cookies.txt -X POST http://localhost:3000/projects \
 
 ## Scripts disponíveis
 
-| Comando | Descrição |
-| --- | --- |
-| `pnpm start` | Inicia a aplicação |
-| `pnpm start:dev` | Inicia em modo watch |
-| `pnpm start:debug` | Inicia em modo debug e watch |
-| `pnpm build` | Gera o build de produção |
-| `pnpm start:prod` | Executa o build gerado |
-| `pnpm lint` | Analisa e corrige o código com ESLint |
-| `pnpm format` | Formata os arquivos com Prettier |
-| `pnpm test` | Executa os testes unitários |
-| `pnpm test:watch` | Executa testes em modo watch |
-| `pnpm test:cov` | Gera o relatório de cobertura |
-| `pnpm test:e2e` | Executa os testes end-to-end |
+| Comando            | Descrição                             |
+| ------------------ | ------------------------------------- |
+| `pnpm start`       | Inicia a aplicação                    |
+| `pnpm start:dev`   | Inicia em modo watch                  |
+| `pnpm start:debug` | Inicia em modo debug e watch          |
+| `pnpm build`       | Gera o build de produção              |
+| `pnpm start:prod`  | Executa o build gerado                |
+| `pnpm lint`        | Analisa e corrige o código com ESLint |
+| `pnpm format`      | Formata os arquivos com Prettier      |
+| `pnpm test`        | Executa os testes unitários           |
+| `pnpm test:watch`  | Executa testes em modo watch          |
+| `pnpm test:cov`    | Gera o relatório de cobertura         |
+| `pnpm test:e2e`    | Executa os testes end-to-end          |
 
 Para aplicar migrations em produção, use:
 
